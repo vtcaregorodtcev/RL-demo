@@ -7,12 +7,15 @@ const MAX_STEPS_PER_GAME = 1000;
 
 function setup() {
   mem = new ReplayMemory();
-  env = new Environment(600, 600, 4, 4, 4, 6);
+  env = new Environment(400, 400, 4, 4, 4, 4);
 
   [STATE] = env.updateAgent();
 
   createCanvas(...env.dims);
-  goal = loadImage('assets/goal.png');
+
+  cheese = loadImage('assets/cheese.png');
+  cat = loadImage('assets/cat.png');
+  rat = loadImage('assets/rat.png');
 }
 
 function drawNet(net) {
@@ -31,7 +34,7 @@ function drawEnemies(enemies) {
 
     fill(e.color);
     stroke(black);
-    rect(e.left, e.top, e.width, e.height)
+    image(cat, e.left, e.top, e.width, e.height);
   })
 }
 
@@ -40,13 +43,13 @@ function drawAgent(r) {
 
   fill(green);
   stroke(green);
-  rect(r.left, r.top, r.width, r.height);
+  image(rat, r.left, r.top, r.width, r.height);
 }
 
 function drawGoal(r) {
   const padding = 30;
 
-  image(goal, r.left + padding, r.top + padding, r.width - padding * 2, r.height - padding * 2);
+  image(cheese, r.left + padding, r.top + padding, r.width - padding * 2, r.height - padding * 2);
 }
 
 let decayCounter = 1;
@@ -63,11 +66,11 @@ async function draw() {
 
   // env.updateEnemies();
 
-  const [nextState, action, done] = env.updateAgent();
+  const [nextState, action, done] = env.updateAgent(STATE);
 
   const reward = env.calcReward();
 
-  mem.addSample([STATE, action, reward, nextState, done]);
+  mem.append([STATE, action, reward, nextState, done]);
 
   STATE = nextState;
 
@@ -82,7 +85,7 @@ async function draw() {
     env.reset();
     CURRENT_STEP = 0;
 
-    mem.dispose();
+    // mem.dispose();
 
     env.decayEps(decayCounter++);
 
@@ -91,7 +94,7 @@ async function draw() {
 }
 
 async function replay() {
-  let miniBatch = mem.getBatch();
+  let miniBatch = mem.sample(500);
 
   let currentStates = miniBatch.map((dp) => { return dp[0].dataSync() });
   let currentQs = await env.agent.network.predict(tf.tensor(currentStates)).array();
@@ -119,5 +122,5 @@ async function replay() {
     Y.push(currentQ);
   }
 
-  await env.agent.network.fit(tf.tensor(X), tf.tensor(Y), { epochs: 300, verbose: 0 });
+  await env.agent.network.fit(tf.tensor(X), tf.tensor(Y), { verbose: 0 });
 }

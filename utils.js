@@ -15,3 +15,13 @@ function rectsIntersected(r1, r2) {
     r2.top > r1.bottom ||
     r2.bottom < r1.top);
 }
+
+function randomWithStep(min, max, step) {
+  const choices = [];
+
+  for (let i = min; i < max; i += step) {
+    choices.push(i)
+  }
+
+  return random(choices);
+}

@@ -24,6 +24,8 @@ class Agent {
     const model = tf.sequential();
     model.add(tf.layers.dense({ inputShape: [inputShape], units: 64, activation: 'relu' }));
     model.add(tf.layers.dense({ units: 64, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 128, activation: 'softmax' }));
+    model.add(tf.layers.dropout({ rate: 0.20 }));
     model.add(tf.layers.dense({ units: Agent.ACTIONS.length }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
@@ -95,7 +97,7 @@ class Environment {
     this.discount = Environment.DISCOUNT;
   }
 
-  static MAX_EPS = 0.2;
+  static MAX_EPS = 0.4;
   static MIN_EPS = 0.01;
   static LAMBDA = 0.01;
   static DISCOUNT = 0.99;
@@ -153,7 +155,7 @@ class Environment {
       for (let i = 1; i < this.columns - 1; i++) {
         enemies.push({
           left: this.colWidth * i + this.colWidth / 2 - size / 2,
-          top: random(0, this.height - size),
+          top: randomWithStep(0, this.height - size, this.rowWidth),
           width: size,
           height: size,
           color: '#366',
@@ -166,7 +168,7 @@ class Environment {
 
       for (let i = 1; i < this.rows - 1; i++) {
         enemies.push({
-          left: random(0, this.width - size),
+          left: randomWithStep(0, this.width - size, this.colWidth),
           top: this.rowWidth * i + this.rowWidth / 2 - size / 2,
           width: size,
           height: size,
@@ -192,29 +194,27 @@ class Environment {
     })
   }
 
-  updateAgent() {
-    const state = this.getStateTensor();
-    const action = this.agent.chooseAction(state, this.eps)
+  updateAgent(STATE = this.getStateTensor()) {
+    const action = this.agent.chooseAction(STATE, this.eps);
 
-    this.agent.update(action)
+    this.agent.update(action);
+
+    const state = this.getStateTensor();
 
     return [state, action, this.isDone()];
   }
 
   calcReward() {
-    let reward = 0;
-
-    // will get more reward near goal
-    reward += this.agent.rect.left + this.agent.rect.top;
+    let reward = -0.2;
 
     const agentRect = toRect(this.agent.rect);
     const enemiesRects = this.enemies.map(e => toRect(e));
-    const goalRect = toRect(this.goal)
+    const goalRect = toRect(this.goal);
 
     const intersected = enemiesRects.filter(e => rectsIntersected(e, agentRect));
-    reward += intersected.length * -10000;
+    reward += intersected.length && -10;
 
-    if (rectsIntersected(agentRect, goalRect)) reward += 100000;
+    if (rectsIntersected(agentRect, goalRect)) reward += 100;
 
     return reward;
   }
@@ -259,7 +259,7 @@ class Environment {
   }
 
   get enemySize() {
-    const lessInSuchTimes = 5;
+    const lessInSuchTimes = 3;
 
     return min(
       this.rowWidth / lessInSuchTimes,
