@@ -1,8 +1,8 @@
 class Agent {
-  static MOVE_RIGHT = 1;
-  static MOVE_DOWN = 2;
-  static MOVE_LEFT = 3;
-  static MOVE_UP = 4;
+  static MOVE_RIGHT = 0;
+  static MOVE_DOWN = 1;
+  static MOVE_LEFT = 2;
+  static MOVE_UP = 3;
 
   static ACTIONS = [
     Agent.MOVE_RIGHT,
@@ -38,9 +38,10 @@ class Agent {
       return Agent.ACTIONS[random([0, 1, 2, 3])]
     } else {
       return tf.tidy(() => {
-        const actionsProbs = this.network.predict(state).dataSync();
-
-        return Agent.ACTIONS[actionsProbs.indexOf(Math.max(...actionsProbs))];
+        const logits = this.network.predict(state);
+        const sigmoid = tf.sigmoid(logits);
+        const probs = tf.div(sigmoid, tf.sum(sigmoid));
+        return tf.multinomial(probs, 1).dataSync()[0] - 1;
       });
     }
   }
@@ -90,7 +91,7 @@ class Environment {
     this.discount = Environment.DISCOUNT;
   }
 
-  static MAX_EPS = 0.2;
+  static MAX_EPS = 0.3;
   static MIN_EPS = 0.01;
   static LAMBDA = 0.01;
   static DISCOUNT = 0.95;
@@ -196,21 +197,16 @@ class Environment {
     let reward = 0;
 
     // will get more reward near goal
-    for (let i = 0; i <= this.height; i += this.rowWidth) {
-      for (let j = 0; j <= this.width; j += this.colWidth) {
-        if (this.agent.rect.left > j) reward++;
-        if (this.agent.rect.top > i) reward++;
-      }
-    }
+    reward += this.agent.rect.left + this.agent.rect.top;
 
     const agentRect = toRect(this.agent.rect);
     const enemiesRects = this.enemies.map(e => toRect(e));
     const goalRect = toRect(this.goal)
 
     const intersected = enemiesRects.filter(e => rectsIntersected(e, agentRect));
-    reward += intersected.length * -100;
+    reward += intersected.length * -10000;
 
-    if (rectsIntersected(agentRect, goalRect)) reward += 1000;
+    if (rectsIntersected(agentRect, goalRect)) reward += 100000;
 
     return reward;
   }

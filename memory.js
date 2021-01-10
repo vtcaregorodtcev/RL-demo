@@ -14,7 +14,7 @@ class ReplayMemory {
 
       if (this.memory.length > this.size)
         this.memory = this.memory
-          //.sort((s1, s2) => s2[2] - s1[2]) // sort by max reward
+          .sort((s1, s2) => s2[2] - s1[2]) // sort by max reward
           .slice(0, this.size)
     });
   }
@@ -34,11 +34,8 @@ class ReplayMemory {
   }
 
   dispose() {
-    this.memory.map(x => {
-      x[0].dispose();
-      x[3].dispose();
+    tf.tidy(() => {
+      this.memory = [];
     });
-
-    this.memory = [];
   }
 }

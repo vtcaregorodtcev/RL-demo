@@ -7,7 +7,7 @@ const MAX_STEPS_PER_GAME = 500;
 
 function setup() {
   mem = new ReplayMemory();
-  env = new Environment(600, 600, 16, 16, 4, 4);
+  env = new Environment(600, 600, 5, 5, 4, 8);
 
   [STATE] = env.updateAgent();
 
@@ -49,6 +49,8 @@ function drawGoal(r) {
   image(goal, r.left + padding, r.top + padding, r.width - padding * 2, r.height - padding * 2);
 }
 
+let decayCounter = 1;
+
 async function draw() {
   CURRENT_STEP++;
 
@@ -66,20 +68,24 @@ async function draw() {
 
   mem.addSample([STATE, action, reward, nextState, done]);
 
-  env.decayEps(CURRENT_STEP);
-
   STATE = nextState;
 
   if (
     done
     || CURRENT_STEP >= MAX_STEPS_PER_GAME
   ) {
+    noLoop();
+
     await replay();
 
     env.reset();
     CURRENT_STEP = 0;
 
     mem.dispose();
+
+    env.decayEps(decayCounter++);
+
+    loop();
   }
 }
 
@@ -90,9 +96,9 @@ async function replay() {
   const nextStates = batch.map(([, , , nextState]) => nextState);
 
   // Predict the values of each action at each state
-  const qsa = states.map((state) => env.agent.network.predict(state));
+  const qsa = tf.tidy(() => states.map((state) => env.agent.network.predict(state)));
   // Predict the values of each action at each next state
-  const qsad = nextStates.map((nextState) => env.agent.network.predict(nextState));
+  const qsad = tf.tidy(() => nextStates.map((nextState) => env.agent.network.predict(nextState)));
 
   let x = new Array();
   let y = new Array();
@@ -101,7 +107,7 @@ async function replay() {
   batch.forEach(
     ([state, action, reward, nextState, done], index) => {
 
-      const currentQ = qsa[index];
+      const currentQ = qsa[index]//.dataSync();
 
       currentQ[action] = !done
         ? reward + env.discount * qsad[index].max().dataSync()
@@ -113,16 +119,16 @@ async function replay() {
   );
 
   // Clean unused tensors
-  qsa.concat(states).forEach((state) => state.dispose());
-  qsad.concat(nextStates).forEach((state) => state.dispose());
+  //qsa.concat(states).forEach((state) => state.dispose());
+  //qsad.concat(nextStates).forEach((state) => state.dispose());
 
   // Reshape the batches to be fed to the network
   x = tf.tensor2d(x)
   y = tf.tensor2d(y)
 
   // Learn the Q(s, a) values given associated discounted rewards
-  await env.agent.network.fit(x, y);
+  await env.agent.network.fit(x, y, { epochs: 10, verbose: 0 });
 
-  x.dispose();
-  y.dispose();
+  // x.dispose();
+  // y.dispose();
 }
