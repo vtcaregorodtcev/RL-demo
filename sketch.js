@@ -3,11 +3,11 @@ let mem = null;
 let STATE = null;
 
 let CURRENT_STEP = 0;
-const MAX_STEPS_PER_GAME = 500;
+const MAX_STEPS_PER_GAME = 1000;
 
 function setup() {
   mem = new ReplayMemory();
-  env = new Environment(600, 600, 5, 5, 4, 8);
+  env = new Environment(600, 600, 4, 4, 4, 6);
 
   [STATE] = env.updateAgent();
 
@@ -61,10 +61,11 @@ async function draw() {
   drawEnemies(env.enemies);
   drawAgent(env.agent.rect);
 
-  env.updateEnemies();
+  // env.updateEnemies();
+
+  const [nextState, action, done] = env.updateAgent();
 
   const reward = env.calcReward();
-  const [nextState, action, done] = env.updateAgent();
 
   mem.addSample([STATE, action, reward, nextState, done]);
 
@@ -90,45 +91,33 @@ async function draw() {
 }
 
 async function replay() {
-  const batch = mem.getBatch();
+  let miniBatch = mem.getBatch();
 
-  const states = batch.map(([state, , ,]) => state);
-  const nextStates = batch.map(([, , , nextState]) => nextState);
+  let currentStates = miniBatch.map((dp) => { return dp[0].dataSync() });
+  let currentQs = await env.agent.network.predict(tf.tensor(currentStates)).array();
+  let newCurrentStates = miniBatch.map((dp) => { return dp[3].dataSync() });
+  let futureQs = await env.agent.network.predict(tf.tensor(newCurrentStates)).array();
 
-  // Predict the values of each action at each state
-  const qsa = tf.tidy(() => states.map((state) => env.agent.network.predict(state)));
-  // Predict the values of each action at each next state
-  const qsad = tf.tidy(() => nextStates.map((nextState) => env.agent.network.predict(nextState)));
+  let X = [];
+  let Y = [];
 
-  let x = new Array();
-  let y = new Array();
+  for (let index = 0; index < miniBatch.length; index++) {
+    const [state, action, reward, newState, done] = miniBatch[index];
+    let newQ;
+    let currentQ;
 
-  // Update the states rewards with the discounted next states rewards
-  batch.forEach(
-    ([state, action, reward, nextState, done], index) => {
-
-      const currentQ = qsa[index]//.dataSync();
-
-      currentQ[action] = !done
-        ? reward + env.discount * qsad[index].max().dataSync()
-        : reward;
-
-      x.push(state.dataSync());
-      y.push(currentQ.dataSync());
+    if (!done) {
+      let maxFutureQ = Math.max(...futureQs[index]);
+      newQ = reward + (env.discount * maxFutureQ);
     }
-  );
+    else { newQ = reward }
 
-  // Clean unused tensors
-  //qsa.concat(states).forEach((state) => state.dispose());
-  //qsad.concat(nextStates).forEach((state) => state.dispose());
+    currentQ = currentQs[index];
+    currentQ[action] = newQ;
 
-  // Reshape the batches to be fed to the network
-  x = tf.tensor2d(x)
-  y = tf.tensor2d(y)
+    X.push(state.dataSync());
+    Y.push(currentQ);
+  }
 
-  // Learn the Q(s, a) values given associated discounted rewards
-  await env.agent.network.fit(x, y, { epochs: 10, verbose: 0 });
-
-  // x.dispose();
-  // y.dispose();
+  await env.agent.network.fit(tf.tensor(X), tf.tensor(Y), { epochs: 300, verbose: 0 });
 }

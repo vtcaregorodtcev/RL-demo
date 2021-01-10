@@ -22,8 +22,8 @@ class Agent {
 
   createModel(inputShape) {
     const model = tf.sequential();
-    model.add(tf.layers.dense({ inputShape: [inputShape], units: 128, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 512, activation: 'relu' }));
+    model.add(tf.layers.dense({ inputShape: [inputShape], units: 64, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 64, activation: 'relu' }));
     model.add(tf.layers.dense({ units: Agent.ACTIONS.length }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
@@ -35,13 +35,17 @@ class Agent {
     if (!this.network) this.network = this.createModel(state.size);
 
     if (random(0, 1) < eps) {
-      return Agent.ACTIONS[random([0, 1, 2, 3])]
-    } else {
       return tf.tidy(() => {
         const logits = this.network.predict(state);
         const sigmoid = tf.sigmoid(logits);
         const probs = tf.div(sigmoid, tf.sum(sigmoid));
-        return tf.multinomial(probs, 1).dataSync()[0] - 1;
+        return tf.multinomial(probs, 1).dataSync()[0];
+      });
+    } else {
+      return tf.tidy(() => {
+        const probs = this.network.predict(state).dataSync();
+
+        return Agent.ACTIONS[probs.indexOf(Math.max(...probs))];
       });
     }
   }
@@ -91,15 +95,15 @@ class Environment {
     this.discount = Environment.DISCOUNT;
   }
 
-  static MAX_EPS = 0.3;
+  static MAX_EPS = 0.2;
   static MIN_EPS = 0.01;
   static LAMBDA = 0.01;
-  static DISCOUNT = 0.95;
+  static DISCOUNT = 0.99;
 
   resetAgent() {
     return new Agent(this.agent?.network, {
-      left: random(0, this.colWidth - this.agentSize),
-      top: random(0, this.rowWidth - this.agentSize),
+      left: 0,
+      top: 0,
       width: this.agentSize,
       height: this.agentSize,
     }, this.agentSpeed, this.width, this.height)
@@ -107,25 +111,29 @@ class Environment {
 
   reset() {
     this.agent = this.resetAgent();
-    this.#enemies = [];
+    // this.#enemies = [];
   };
 
   getState() { // normalized
-    const enemiesCoords = this.enemies.map(
-      e => [e.left / this.width, e.top / this.height]
-    ).flat();
+    const agentX = this.agent.rect.left;
+    const agentY = this.agent.rect.top;
+
+    const maxDistance = distance(0, this.width, 0, this.height);
+
+    const enemiesDistances = this.enemies.map(
+      e => distance(agentX, e.left, agentY, e.top) / maxDistance
+    );
 
     const goalDistance = distance(
-      this.agent.rect.left,
+      agentX,
       this.goal.left,
-      this.agent.rect.top,
-      this.goal.top) /
-      distance(0, this.width, 0, this.height);
+      agentY,
+      this.goal.top) / maxDistance;
 
     return [
-      this.agent.rect.left / this.width,
-      this.agent.rect.top / this.height,
-      ...enemiesCoords,
+      agentX / this.width,
+      agentY / this.height,
+      ...enemiesDistances,
       goalDistance
     ]
   }

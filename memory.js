@@ -13,24 +13,14 @@ class ReplayMemory {
       this.memory.push(sample);
 
       if (this.memory.length > this.size)
-        this.memory = this.memory
-          .sort((s1, s2) => s2[2] - s1[2]) // sort by max reward
-          .slice(0, this.size)
+        this.memory.shift();
     });
   }
 
   getBatch(size) {
     return tf.tidy(() => {
-      let shuffled = this.memory.slice(0), i = this.memory.length, temp, index;
-
-      while (i--) {
-        index = Math.floor((i + 1) * Math.random());
-        temp = shuffled[index];
-        shuffled[index] = shuffled[i];
-        shuffled[i] = temp;
-      }
-      return shuffled.slice(0, size || this.batchSize);
-    })
+      return this.memory.slice(0, size || this.batchSize)
+    });
   }
 
   dispose() {
