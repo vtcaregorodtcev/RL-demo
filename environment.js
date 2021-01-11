@@ -205,7 +205,13 @@ class Environment {
   }
 
   calcReward() {
-    let reward = -0.2;
+    // penalty less if near goal
+    let reward = -distance(
+      this.agent.rect.left,
+      this.goal.left,
+      this.agent.rect.top,
+      this.goal.top
+    ) / distance(0, this.width, 0, this.height) * 0.2;
 
     const agentRect = toRect(this.agent.rect);
     const enemiesRects = this.enemies.map(e => toRect(e));
