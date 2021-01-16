@@ -2,18 +2,24 @@ let env = null;
 let mem = null;
 let STATE = null;
 
-let GOAL_REACHED = false;
+let GOAL_REACHED = 0;
+let GAME_COUNT = 0;
 
 let CURRENT_STEP = 0;
 const MAX_STEPS_PER_GAME = 1000;
 
 function setup() {
   mem = new ReplayMemory();
-  env = new Environment(400, 400, 4, 4, 4, 4);
+  env = new Environment(450, 300, 4, 6, 4, 2);
 
   [STATE] = env.updateAgent();
 
   createCanvas(...env.dims);
+  frameRate(120);
+
+  labelPlayed = createElement('label');
+  createElement('br')
+  labelReached = createElement('label');
 
   cheese = loadImage('assets/cheese.png');
   cat = loadImage('assets/cat.png');
@@ -76,6 +82,12 @@ async function draw() {
 
   STATE = nextState;
 
+  if (reward == 100)
+    GOAL_REACHED++;
+
+  labelPlayed.elt.textContent = `Game played ${GAME_COUNT} times;`
+  labelReached.elt.textContent = `Goal reached ${GOAL_REACHED} times;`
+
   if (
     done
     || CURRENT_STEP >= MAX_STEPS_PER_GAME
@@ -85,11 +97,12 @@ async function draw() {
     await replay();
 
     await env.agent.network.save(
-      `localstorage://jerry-v1-${env.agent.network.inputs[0].shape[1]}`
+      `localstorage://jerry-v2-${env.agent.network.inputs[0].shape[1]}`
     );
 
     env.reset();
     CURRENT_STEP = 0;
+    GAME_COUNT++;
 
     // mem.dispose();
 
@@ -102,16 +115,20 @@ async function draw() {
 async function replay() {
   let miniBatch = mem.sample(500);
 
-  let currentStates = miniBatch.map((dp) => { return dp[0].dataSync() });
+  const filtered = miniBatch.filter(Boolean);
+
+  if (!filtered.length) return;
+
+  let currentStates = filtered.map((dp) => { return dp[0].dataSync() });
   let currentQs = await env.agent.network.predict(tf.tensor(currentStates)).array();
-  let newCurrentStates = miniBatch.map((dp) => { return dp[3].dataSync() });
+  let newCurrentStates = filtered.map((dp) => { return dp[3].dataSync() });
   let futureQs = await env.agent.network.predict(tf.tensor(newCurrentStates)).array();
 
   let X = [];
   let Y = [];
 
-  for (let index = 0; index < miniBatch.length; index++) {
-    const [state, action, reward, newState, done] = miniBatch[index];
+  for (let index = 0; index < filtered.length; index++) {
+    const [state, action, reward, newState, done] = filtered[index];
     let newQ;
     let currentQ;
 

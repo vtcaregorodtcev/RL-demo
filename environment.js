@@ -22,14 +22,8 @@ class Agent {
 
   createModel(inputShape) {
     const model = tf.sequential();
-    model.add(tf.layers.dense({ inputShape: [inputShape], units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dropout({ rate: 0.20 }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
+    model.add(tf.layers.dense({ inputShape: [inputShape], units: 36, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 36, activation: 'relu' }));
     model.add(tf.layers.dropout({ rate: 0.20 }));
     model.add(tf.layers.dense({ units: Agent.ACTIONS.length }));
 
@@ -60,10 +54,10 @@ class Agent {
   update(action) {
     switch (action) {
       case Agent.MOVE_UP:
-        this.rect.top = this.rect.top + this.speed;
+        this.rect.top = this.rect.top - this.speed;
         break;
       case Agent.MOVE_DOWN:
-        this.rect.top = this.rect.top - this.speed;
+        this.rect.top = this.rect.top + this.speed;
         break;
       case Agent.MOVE_RIGHT:
         this.rect.left = this.rect.left + this.speed;
@@ -102,7 +96,7 @@ class Environment {
     this.discount = Environment.DISCOUNT;
   }
 
-  static MAX_EPS = 0.4;
+  static MAX_EPS = 0.25;
   static MIN_EPS = 0.01;
   static LAMBDA = 0.01;
   static DISCOUNT = 0.99;
@@ -164,9 +158,6 @@ class Environment {
     let isThereGoalInFrontOnX = 0;
     let isThereGoalInFrontOnY = 0;
 
-    let minDistanceToGoalOnX = this.width;
-    let minDistanceToGoalOnY = this.height;
-
     const goalX = this.goal.left;
     const goalY = this.goal.top;
 
@@ -179,8 +170,6 @@ class Environment {
       agentY1 <= goalY2 && goalY2 <= agentY2
     )) {
       isThereGoalInFrontOnX = 1;
-
-      minDistanceToGoalOnX = Math.min(minDistanceToGoalOnX, distance(agentX2, goalX, agentY2, goalY));
     }
 
     if (goalY > agentY2 && (
@@ -189,16 +178,12 @@ class Environment {
       agentX1 <= goalX2 && goalX2 <= agentX2
     )) {
       isThereGoalInFrontOnY = 1;
-
-      minDistanceToGoalOnY = Math.min(minDistanceToGoalOnY, distance(agentX2, goalX, agentY2, goalY));
     }
 
-    const commonGoalDistance = distance(agentX2, goalX, agentY2, goalY);
+    const commonGoalDistance = distance(agentX2, this.width, agentY2, this.height);
 
     return [
-      agentX1 / this.width,
       agentX2 / this.width,
-      agentY1 / this.height,
       agentY2 / this.height,
       isThereEnemyInFrontOnX,
       isThereEnemyInFrontOnY,
@@ -206,8 +191,6 @@ class Environment {
       minDistanceToEnemyOnY / this.height,
       isThereGoalInFrontOnX,
       isThereGoalInFrontOnY,
-      minDistanceToGoalOnX / this.width,
-      minDistanceToGoalOnY / this.height,
       commonGoalDistance / maxDistance
     ];
   }
@@ -280,9 +263,9 @@ class Environment {
     // penalty less if near goal
     let reward = -distance(
       this.agent.rect.left,
-      this.goal.left,
+      this.width,
       this.agent.rect.top,
-      this.goal.top
+      this.height
     ) / distance(0, this.width, 0, this.height) * 0.2;
 
     const agentRect = toRect(this.agent.rect);
@@ -292,7 +275,7 @@ class Environment {
     const intersected = enemiesRects.filter(e => rectsIntersected(e, agentRect));
     reward += intersected.length && -10;
 
-    if (rectsIntersected(agentRect, goalRect)) reward += 100;
+    if (rectsIntersected(agentRect, goalRect)) reward = 100;
 
     return reward;
   }
