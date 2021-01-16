@@ -3,11 +3,13 @@ function distance(x1, x2, y1, y2) {
 }
 
 function toRect(rectable) {
-  rectable.bottom = rectable.top + rectable.height;
-  rectable.right = rectable.left + rectable.width;
+  rectable.bottom = (rectable.top + rectable.height);
+  rectable.right = (rectable.left + rectable.width);
 
   return rectable;
 }
+
+function transpose(m) { return m[0].map((x, i) => m.map(x => x[i])) }
 
 function rectsIntersected(r1, r2) {
   return !(r2.left > r1.right ||

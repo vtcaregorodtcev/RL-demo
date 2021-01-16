@@ -22,15 +22,33 @@ class Agent {
 
   createModel(inputShape) {
     const model = tf.sequential();
-    model.add(tf.layers.dense({ inputShape: [inputShape], units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dropout({ rate: 0.20 }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
-    model.add(tf.layers.dropout({ rate: 0.20 }));
+    model.add(tf.layers.conv2d({
+      filters: 16,
+      kernelSize: 3,
+      strides: 1,
+      activation: 'relu',
+      inputShape,
+      dataFormat: 'channelsFirst'
+    }));
+    model.add(tf.layers.batchNormalization());
+    model.add(tf.layers.conv2d({
+      filters: 32,
+      kernelSize: 3,
+      strides: 1,
+      activation: 'relu',
+      dataFormat: 'channelsFirst'
+    }));
+    model.add(tf.layers.batchNormalization());
+    model.add(tf.layers.conv2d({
+      filters: 32,
+      kernelSize: 3,
+      strides: 1,
+      activation: 'relu',
+      dataFormat: 'channelsFirst'
+    }));
+    model.add(tf.layers.flatten());
+    model.add(tf.layers.dense({ units: 100, activation: 'relu' }));
+    model.add(tf.layers.dropout({ rate: 0.25 }));
     model.add(tf.layers.dense({ units: Agent.ACTIONS.length }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
@@ -39,7 +57,9 @@ class Agent {
   }
 
   chooseAction(state, eps) {
-    if (!this.network) this.network = this.createModel(state.size);
+    const [_, ...goalShape] = state.shape;
+
+    if (!this.network) this.network = this.createModel(goalShape);
 
     if (random(0, 1) < eps) {
       return tf.tidy(() => {
@@ -60,10 +80,10 @@ class Agent {
   update(action) {
     switch (action) {
       case Agent.MOVE_UP:
-        this.rect.top = this.rect.top + this.speed;
+        this.rect.top = this.rect.top - this.speed;
         break;
       case Agent.MOVE_DOWN:
-        this.rect.top = this.rect.top - this.speed;
+        this.rect.top = this.rect.top + this.speed;
         break;
       case Agent.MOVE_RIGHT:
         this.rect.left = this.rect.left + this.speed;
@@ -94,8 +114,10 @@ class Environment {
     this.height = h;
     this.rows = r;
     this.columns = c;
-    this.enemySpeed = es;
-    this.agentSpeed = as;
+    this.enemySpeed = es * this.enemySize;
+    this.agentSpeed = as * this.agentSize;
+
+    this.#enemies = this.enemies;
 
     this.agent = this.resetAgent();
     this.eps = Environment.MAX_EPS;
@@ -121,99 +143,103 @@ class Environment {
     // this.#enemies = [];
   };
 
-  getState() { // normalized
-    const maxDistance = distance(0, this.width, 0, this.height);
+  get enemyChannel() {
+    const channel = [];
+    let x = 0, y = 0;
 
-    const agentX1 = this.agent.rect.left;
-    const agentY1 = this.agent.rect.top;
+    for (let i = 0; i < this.width; i += this.enemySize) {
+      for (let j = 0; j < this.height; j += this.enemySize) {
+        if (!channel[x]) channel[x] = [];
 
-    const agentX2 = agentX1 + this.agentSize;
-    const agentY2 = agentY1 + this.agentSize;
+        channel[x][y] = this.enemies.some(e => (
+          i <= e.left && i + this.enemySize >= (e.right)
+        ) && (
+            j <= e.top && j + this.enemySize >= (e.bottom)
+          )) ? 1 : 0;
 
-    let isThereEnemyInFrontOnX = 0;
-    let isThereEnemyInFrontOnY = 0;
-
-    let minDistanceToEnemyOnX = this.width;
-    let minDistanceToEnemyOnY = this.height;
-
-    this.enemies.map(e => {
-      const eTop2 = e.top + this.enemySize;
-      const eLeft2 = e.left + this.enemySize;
-
-      if (e.left > agentX2 && (
-        agentY1 <= e.top && e.top <= agentY2
-        ||
-        agentY1 <= eTop2 && eTop2 <= agentY2
-      )) {
-        isThereEnemyInFrontOnX = 1;
-
-        minDistanceToEnemyOnX = Math.min(minDistanceToEnemyOnX, distance(agentX2, e.left, agentY2, e.top));
+        y++;
       }
 
-      if (e.top > agentY2 && (
-        agentX1 <= e.left && e.left <= agentX2
-        ||
-        agentX1 <= eLeft2 && eLeft2 <= agentX2
-      )) {
-        isThereEnemyInFrontOnY = 1;
+      x++;
+      y = 0;
+    }
 
-        minDistanceToEnemyOnY = Math.min(minDistanceToEnemyOnY, distance(agentX2, e.left, agentY2, e.top));
+    return transpose(channel);
+  }
+
+  get agentChannel() {
+    const channel = [];
+    let x = 0, y = 0;
+
+    const { left, right, top, bottom } = toRect(this.agent.rect);
+
+    for (let i = 0; i < this.width; i += this.enemySize) {
+      for (let j = 0; j < this.height; j += this.enemySize) {
+        if (!channel[x]) channel[x] = [];
+
+        channel[x][y] = (i >= left && i + this.agentSize <= right)
+          && (j >= top && j + this.agentSize <= bottom) ? 1 : 0;
+
+        y++;
       }
-    });
 
-    let isThereGoalInFrontOnX = 0;
-    let isThereGoalInFrontOnY = 0;
-
-    let minDistanceToGoalOnX = this.width;
-    let minDistanceToGoalOnY = this.height;
-
-    const goalX = this.goal.left;
-    const goalY = this.goal.top;
-
-    const goalX2 = goalX + this.colWidth;
-    const goalY2 = goalY + this.rowWidth;
-
-    if (goalX > agentX2 && (
-      agentY1 <= goalY && goalY <= agentY2
-      ||
-      agentY1 <= goalY2 && goalY2 <= agentY2
-    )) {
-      isThereGoalInFrontOnX = 1;
-
-      minDistanceToGoalOnX = Math.min(minDistanceToGoalOnX, distance(agentX2, goalX, agentY2, goalY));
+      x++;
+      y = 0;
     }
 
-    if (goalY > agentY2 && (
-      agentX1 <= goalX && goalX <= agentX2
-      ||
-      agentX1 <= goalX2 && goalX2 <= agentX2
-    )) {
-      isThereGoalInFrontOnY = 1;
+    return transpose(channel);
+  }
 
-      minDistanceToGoalOnY = Math.min(minDistanceToGoalOnY, distance(agentX2, goalX, agentY2, goalY));
+  get goalChannel() {
+    const channel = [];
+    let x = 0, y = 0;
+
+    const { left, right, top, bottom } = toRect(this.goal);
+
+    for (let i = 0; i < this.width; i += this.enemySize) {
+      for (let j = 0; j < this.height; j += this.enemySize) {
+        if (!channel[x]) channel[x] = [];
+
+        channel[x][y] = (i >= left && i + this.agentSize <= right)
+          && (j >= top && j + this.agentSize <= bottom) ? 1 : 0;
+
+        y++;
+      }
+
+      x++;
+      y = 0;
     }
 
-    const commonGoalDistance = distance(agentX2, goalX, agentY2, goalY);
+    return transpose(channel);
+  }
 
-    return [
-      agentX1 / this.width,
-      agentX2 / this.width,
-      agentY1 / this.height,
-      agentY2 / this.height,
-      isThereEnemyInFrontOnX,
-      isThereEnemyInFrontOnY,
-      minDistanceToEnemyOnX / this.width,
-      minDistanceToEnemyOnY / this.height,
-      isThereGoalInFrontOnX,
-      isThereGoalInFrontOnY,
-      minDistanceToGoalOnX / this.width,
-      minDistanceToGoalOnY / this.height,
-      commonGoalDistance / maxDistance
-    ];
+  getState() {
+    const ec = this.enemyChannel;
+    const ac = this.agentChannel;
+    const gc = this.goalChannel;
+
+    return [ac, gc, ec];
   }
 
   getStateTensor() {
-    return tf.tensor2d([this.getState()])
+    const [ac, gc, ec] = this.getState();
+
+    const buffer = tf.buffer([1, 3, this.rows, this.columns]);
+
+    ac.map((x, ix) => x.map((val, iy) => {
+      buffer.set(val, 0, 0, ix, iy);
+    }))
+
+    gc.map((x, ix) => x.map((val, iy) => {
+      buffer.set(val, 0, 1, ix, iy);
+    }))
+
+    ec.map((x, ix) => x.map((val, iy) => {
+      buffer.set(val, 0, 2, ix, iy);
+    }))
+
+    // Convert the buffer back to a tensor.
+    return buffer.toTensor();
   }
 
   #enemies = [];
@@ -225,32 +251,46 @@ class Environment {
       const enemies = [];
 
       for (let i = 1; i < this.columns - 1; i++) {
+        const left = (this.colWidth * i + this.colWidth / 2 - size / 2);
+        const top = (randomWithStep(0, this.height - size, this.rowWidth));
+
         enemies.push({
-          left: this.colWidth * i + this.colWidth / 2 - size / 2,
-          top: randomWithStep(0, this.height - size, this.rowWidth),
+          left: left + 1, //corrective 1 to not detect wrong intersecting,
+          top: top + 1,
           width: size,
           height: size,
           color: '#366',
           speed: this.enemySpeed,
           changableAxis: 'top',
           minValue: 0,
-          maxValue: this.height - size
+          maxValue: this.height - size,
+          get right() {
+            return left + size - 1; //corrective 1 to not detect wrong intersecting
+          },
+          get bottom() {
+            return top + size - 1;
+          },
         })
       }
 
-      for (let i = 1; i < this.rows - 1; i++) {
-        enemies.push({
-          left: randomWithStep(0, this.width - size, this.colWidth),
-          top: this.rowWidth * i + this.rowWidth / 2 - size / 2,
-          width: size,
-          height: size,
-          color: '#663',
-          speed: -this.enemySpeed,
-          changableAxis: 'left',
-          minValue: 0,
-          maxValue: this.height - size
-        })
-      }
+      /* for (let i = 1; i < this.rows - 1; i++) {
+         const left = (randomWithStep(0, this.width - size, this.colWidth));
+         const top = (this.rowWidth * i + this.rowWidth / 2 - size / 2);
+
+         enemies.push({
+           left: + 1, //corrective 1 to not detect wrong intersecting,
+           top: top + 1,
+           width: size,
+           height: size,
+           right: left + size - 1, //corrective 1 to not detect wrong intersecting
+           bottom: top + size - 1,
+           color: '#663',
+           speed: -this.enemySpeed,
+           changableAxis: 'left',
+           minValue: 0,
+           maxValue: this.height - size
+         })
+       } */
 
       return this.#enemies = enemies;
     }
@@ -299,8 +339,8 @@ class Environment {
 
   isDone() {
     const agentRect = toRect(this.agent.rect);
-    const enemiesRects = this.enemies.map(e => toRect(e));
-    const goalRect = toRect(this.goal)
+    const enemiesRects = this.enemies;
+    const goalRect = toRect(this.goal);
 
     return rectsIntersected(agentRect, goalRect) || enemiesRects.some(e => rectsIntersected(e, agentRect));
   }
@@ -337,7 +377,7 @@ class Environment {
   }
 
   get enemySize() {
-    const lessInSuchTimes = 3;
+    const lessInSuchTimes = 1; // 3;
 
     return min(
       this.rowWidth / lessInSuchTimes,
