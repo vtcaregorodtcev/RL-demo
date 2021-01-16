@@ -22,9 +22,14 @@ class Agent {
 
   createModel(inputShape) {
     const model = tf.sequential();
-    model.add(tf.layers.dense({ inputShape: [inputShape], units: 64, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 64, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 128, activation: 'softmax' }));
+    model.add(tf.layers.dense({ inputShape: [inputShape], units: 35, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
+    model.add(tf.layers.dropout({ rate: 0.20 }));
+    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 35, activation: 'relu' }));
     model.add(tf.layers.dropout({ rate: 0.20 }));
     model.add(tf.layers.dense({ units: Agent.ACTIONS.length }));
 
@@ -117,27 +122,94 @@ class Environment {
   };
 
   getState() { // normalized
-    const agentX = this.agent.rect.left;
-    const agentY = this.agent.rect.top;
-
     const maxDistance = distance(0, this.width, 0, this.height);
 
-    const enemiesDistances = this.enemies.map(
-      e => distance(agentX, e.left, agentY, e.top) / maxDistance
-    );
+    const agentX1 = this.agent.rect.left;
+    const agentY1 = this.agent.rect.top;
 
-    const goalDistance = distance(
-      agentX,
-      this.goal.left,
-      agentY,
-      this.goal.top) / maxDistance;
+    const agentX2 = agentX1 + this.agentSize;
+    const agentY2 = agentY1 + this.agentSize;
+
+    let isThereEnemyInFrontOnX = 0;
+    let isThereEnemyInFrontOnY = 0;
+
+    let minDistanceToEnemyOnX = this.width;
+    let minDistanceToEnemyOnY = this.height;
+
+    this.enemies.map(e => {
+      const eTop2 = e.top + this.enemySize;
+      const eLeft2 = e.left + this.enemySize;
+
+      if (e.left > agentX2 && (
+        agentY1 <= e.top && e.top <= agentY2
+        ||
+        agentY1 <= eTop2 && eTop2 <= agentY2
+      )) {
+        isThereEnemyInFrontOnX = 1;
+
+        minDistanceToEnemyOnX = Math.min(minDistanceToEnemyOnX, distance(agentX2, e.left, agentY2, e.top));
+      }
+
+      if (e.top > agentY2 && (
+        agentX1 <= e.left && e.left <= agentX2
+        ||
+        agentX1 <= eLeft2 && eLeft2 <= agentX2
+      )) {
+        isThereEnemyInFrontOnY = 1;
+
+        minDistanceToEnemyOnY = Math.min(minDistanceToEnemyOnY, distance(agentX2, e.left, agentY2, e.top));
+      }
+    });
+
+    let isThereGoalInFrontOnX = 0;
+    let isThereGoalInFrontOnY = 0;
+
+    let minDistanceToGoalOnX = this.width;
+    let minDistanceToGoalOnY = this.height;
+
+    const goalX = this.goal.left;
+    const goalY = this.goal.top;
+
+    const goalX2 = goalX + this.colWidth;
+    const goalY2 = goalY + this.rowWidth;
+
+    if (goalX > agentX2 && (
+      agentY1 <= goalY && goalY <= agentY2
+      ||
+      agentY1 <= goalY2 && goalY2 <= agentY2
+    )) {
+      isThereGoalInFrontOnX = 1;
+
+      minDistanceToGoalOnX = Math.min(minDistanceToGoalOnX, distance(agentX2, goalX, agentY2, goalY));
+    }
+
+    if (goalY > agentY2 && (
+      agentX1 <= goalX && goalX <= agentX2
+      ||
+      agentX1 <= goalX2 && goalX2 <= agentX2
+    )) {
+      isThereGoalInFrontOnY = 1;
+
+      minDistanceToGoalOnY = Math.min(minDistanceToGoalOnY, distance(agentX2, goalX, agentY2, goalY));
+    }
+
+    const commonGoalDistance = distance(agentX2, goalX, agentY2, goalY);
 
     return [
-      agentX / this.width,
-      agentY / this.height,
-      ...enemiesDistances,
-      goalDistance
-    ]
+      agentX1 / this.width,
+      agentX2 / this.width,
+      agentY1 / this.height,
+      agentY2 / this.height,
+      isThereEnemyInFrontOnX,
+      isThereEnemyInFrontOnY,
+      minDistanceToEnemyOnX / this.width,
+      minDistanceToEnemyOnY / this.height,
+      isThereGoalInFrontOnX,
+      isThereGoalInFrontOnY,
+      minDistanceToGoalOnX / this.width,
+      minDistanceToGoalOnY / this.height,
+      commonGoalDistance / maxDistance
+    ];
   }
 
   getStateTensor() {

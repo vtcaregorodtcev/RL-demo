@@ -2,6 +2,8 @@ let env = null;
 let mem = null;
 let STATE = null;
 
+let GOAL_REACHED = false;
+
 let CURRENT_STEP = 0;
 const MAX_STEPS_PER_GAME = 1000;
 
@@ -81,6 +83,10 @@ async function draw() {
     noLoop();
 
     await replay();
+
+    await env.agent.network.save(
+      `localstorage://jerry-v1-${env.agent.network.inputs[0].shape[1]}`
+    );
 
     env.reset();
     CURRENT_STEP = 0;
